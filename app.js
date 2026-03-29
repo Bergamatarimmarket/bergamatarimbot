@@ -1,113 +1,189 @@
-const express = require('express');
-const axios = require('axios');
-const OpenAI = require('openai');
+const express = require("express");
+const axios = require("axios");
+const OpenAI = require("openai");
+require("dotenv").config();
 
 const app = express();
 app.use(express.json());
 
-const port = process.env.PORT || 3000;
-const verifyToken = process.env.VERIFY_TOKEN;
-const whatsappToken = process.env.WHATSAPP_TOKEN;
-const phoneNumberId = process.env.PHONE_NUMBER_ID;
+const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
+const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
+const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4.1-mini";
+const PORT = process.env.PORT || 3000;
+
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
+  apiKey: OPENAI_API_KEY,
 });
 
-// GET doğrulama
-app.get('/', (req, res) => {
-  const {
-    'hub.mode': mode,
-    'hub.challenge': challenge,
-    'hub.verify_token': token,
-  } = req.query;
+const SYSTEM_PROMPT = `
+Senin adın AsistanDiji
 
-  if (mode === 'subscribe' && token === verifyToken) {
-    console.log('WEBHOOK VERIFIED');
+Sen, Bergama Tarım Market adına WhatsApp üzerinden müşterilerle görüşen dijital tarım danışmanısın.
+Ana uzmanlık alanın zeytin yetiştiriciliği, dönemsel zeytin besleme paketleri, budama hizmetleri, bahçeye özel ön değerlendirme ve eğitim yönlendirmeleridir.
+
+KURUM BİLGİSİ
+- Bergama Tarım Market, zeytin yetiştiriciliği ve zeytin bakım süreçleri üzerine çalışır.
+- Zeytin bahçeleri için dönemsel bakım ve besleme paketleri sunar.
+- Bahçeye özel besleme programları hazırlanır.
+- Gübre ve ilaç başlıkları konuşulabilir ama kullanıcı mümkün olduğunca tek tek bağımsız ürünlere değil, paketlere yönlendirilmelidir.
+- Zeytin hasat makineleri hakkında da temel yönlendirme yapılabilir.
+- Ziraat Mühendisi Eren Vural ekip arkadaşımızdır.
+- Eren Vural ile birlikte zeytinlik budama hizmetleri, danışmanlık, bahçe ziyaretleri ve eğitim çalışmaları yürütülür.
+- Türkiye'nin farklı bölgelerinde eğitimler düzenlenebilir.
+- Genel eğitim duyuruları ve başvuru detayları web sitesi üzerinden yayınlanır.
+- Eğitim başvurusu veya eğitim detayları isteyen kullanıcılar web sitesindeki eğitim başvuru formuna yönlendirilmelidir.
+- Genel eğitim programları dönemsel olarak değişebilir. Kesin tarih vermek yerine web sitesi duyurularına yönlendirmek daha doğrudur.
+- Özel eğitimler, bahçe ziyaretleri ve danışmanlık talepleri için kullanıcıdan temel bilgiler alınmalı ve konu işletme yetkilisine yönlendirilmelidir.
+
+TEMEL AMAÇ
+- Kullanıcının derdini doğal konuşmadan anla.
+- Hemen ürün ismi sayma.
+- Önce gerekli bilgileri topla.
+- Mümkün olduğunca Bergama Tarım Market paketlerine yönlendir.
+- Sipariş, fiyat, özel danışmanlık, özel program, eğitim talebi, bahçe ziyareti veya teknik detay gerektiren konuları işletme yetkilisine yönlendir.
+
+KESİN KURALLAR
+1. Menü gibi konuşturma. Doğal sohbet et.
+2. Kullanıcıyı kısa ama açıklayıcı şekilde karşıla.
+3. Kesin teşhis koyma. "ön değerlendirme", "muhtemel", "uyumlu olabilir" gibi güvenli dil kullan.
+4. Tek tek ürün önerip kullanıcıyı dışarıdan alışverişe yönlendirme.
+5. Uygun durumda dönem paketine yönlendir.
+6. Eren Vural'ın kişisel telefon numarasını paylaşma.
+7. Kullanıcı “Eren Vural ile görüşmek istiyorum” derse:
+   - konuyu kısaca öğren
+   - gerekli bilgileri topla
+   - "konunuzu ekip arkadaşımıza iletmek üzere not alıyorum" gibi yanıt ver
+   - numara verme
+8. Fiyat vermek yerine talebi not alıp işletme yetkilisine yönlendirebilirsin.
+9. Eğitim kaydı isteyenleri web sitesindeki eğitim başvuru formuna yönlendir.
+10. Güncel eğitim takvimi kesin değilse net tarih uydurma; duyuruların web sitesinde yer aldığını söyle.
+11. Kullanıcı bakır, fosfor, potasyum, kalsiyum gibi tek ürünler sorsa bile cevabı mümkünse paket mantığına bağla.
+12. Cevaplar profesyonel, sıcak, sade ve güven veren Türkçe ile yazılmalı.
+
+KULLANICIDAN GEREKTİĞİNDE TOPLANACAK BİLGİLER
+- İl
+- İlçe / bölge
+- Kaç dekar / kaç ağaç
+- Ağaç yaşı
+- Sulama sistemi var mı yok mu
+- Programı yapraktan mı, topraktan mı istiyor
+- Sorun ne zaman başladı
+- Daha önce yaptığı uygulamalar
+- Toprak analizi var mı
+- Güncel fotoğraf var mı
+- Belirtinin yaprakta mı, dalda mı, meyvede mi olduğu
+
+PAKET MANTIĞI
+- Kışlık bakım paketi
+- Tomurcuk / çiçeklenme öncesi paket
+- Meyve tutumu sonrası paket
+- Tane büyütme paketi
+
+Not:
+Paketlerin detay içerikleri ve dozajları sonradan ayrıca öğretilecek. Şimdilik kullanıcıyı doğru pakete yönlendirecek kadar konuş.
+
+YANIT ŞABLONU
+Uygun olduğunda şu akışı kullan:
+1. Kısa değerlendirme
+2. Gerekli netleştirici sorular
+3. Paket yönlendirmesi veya süreç açıklaması
+4. Gerekirse işletme yetkilisine yönlendirme
+
+ÖRNEK TON
+- "Bunu daha doğru değerlendirebilmem için birkaç bilgiye ihtiyacım var."
+- "Tek tek ürün önermek yerine bahçenize uygun dönem paketine yönelmek daha sağlıklı olur."
+- "İsterseniz konunuzu not alıp işletme yetkilimize yönlendirebilirim."
+- "Eğitim detayları ve başvuru için web sitemizdeki eğitim başvuru formunu kullanabilirsiniz."
+
+KARŞILAMA
+İlk mesajda veya uygun durumda şöyle karşıla:
+"Merhabalar, ben Bergama Tarım Market’in dijital tarım danışmanı Asistan DJI. Zeytin yetiştiriciliği, dönemsel bakım paketleri, budama, eğitimler ve bahçenize özel ön değerlendirme konusunda yardımcı olabilirim. Sorununuzu detaylı yazabilir veya fotoğraf gönderebilirsiniz."
+
+KISA TUTMA KURALI
+- WhatsApp yanıtları genelde 3-8 cümle arası olsun.
+- Gereksiz uzun paragraf yazma.
+- Kullanıcı bilgi vermediyse ilk turda 2-5 önemli soru sor.
+`;
+
+async function generateReply(userMessage) {
+  const response = await openai.responses.create({
+    model: OPENAI_MODEL,
+    instructions: SYSTEM_PROMPT,
+    input: userMessage,
+  });
+
+  return response.output_text?.trim() || "Merhabalar, size yardımcı olabilmem için sorununuzu biraz daha detaylı yazabilir misiniz?";
+}
+
+async function sendWhatsAppMessage(to, body) {
+  await axios.post(
+    `https://graph.facebook.com/v23.0/${PHONE_NUMBER_ID}/messages`,
+    {
+      messaging_product: "whatsapp",
+      to,
+      type: "text",
+      text: { body },
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+    }
+  );
+}
+
+app.get("/webhook", (req, res) => {
+  const mode = req.query["hub.mode"];
+  const token = req.query["hub.verify_token"];
+  const challenge = req.query["hub.challenge"];
+
+  if (mode === "subscribe" && token === VERIFY_TOKEN) {
     return res.status(200).send(challenge);
-  } else {
-    return res.status(403).end();
   }
+
+  return res.sendStatus(403);
 });
 
-// POST mesaj alma
-app.post('/', async (req, res) => {
+app.post("/webhook", async (req, res) => {
   try {
-    const timestamp = new Date().toISOString().replace('T', ' ').slice(0, 19);
-    console.log(`\nWebhook received ${timestamp}\n`);
-    console.log(JSON.stringify(req.body, null, 2));
-
-    const message = req.body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+    const message = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
 
     if (!message) {
-      return res.status(200).end();
-    }
-
-    if (message.type !== 'text') {
-      console.log('Text olmayan mesaj geldi, şimdilik pas geçildi.');
-      return res.status(200).end();
+      return res.sendStatus(200);
     }
 
     const from = message.from;
-    const userText = message.text?.body?.trim();
+    const messageType = message.type;
 
-    if (!from || !userText) {
-      return res.status(200).end();
+    let userText = "";
+
+    if (messageType === "text") {
+      userText = message.text?.body || "";
+    } else if (messageType === "image") {
+      userText =
+        "Kullanıcı bir görsel gönderdi. Görselin neyle ilgili olabileceğini sor, zeytin bahçesi / yaprak / dal / meyve / budama / hastalık belirtisi olup olmadığını netleştir ve mümkünse yakın plan ile genel görünüm iste.";
+    } else {
+      userText =
+        "Kullanıcı metin dışında bir içerik gönderdi. Nazikçe metin veya fotoğraf ile detay istemen gerekiyor.";
     }
 
-    const systemPrompt = `
-Sen Bergama Tarım Market adına WhatsApp üzerinden cevap veren yardımcı asistansın.
-Tarım, gübre, bitki besleme, sulama, makina ve danışmanlık konularında yardımcı olursun.
-Cevapların kısa, net ve güven verici olsun.
-Kesin olmayan konularda kesin konuşma.
-Gerekirse kullanıcıdan şu bilgileri iste:
-- ürün türü
-- ekili alan / dekar
-- uygulama dönemi
-- damlamadan mı, yapraktan mı uygulama yapılacağı
+    const reply = await generateReply(userText);
+    await sendWhatsAppMessage(from, reply);
 
-Fiyat, stok, sipariş, bayilik ve özel ticari taleplerde kullanıcıya kısa bir ön cevap verip yetkili ekibin dönüş yapacağını belirt.
-`;
-
-    const aiResponse = await openai.responses.create({
-      model: 'gpt-5.4',
-      input: [
-        {
-          role: 'system',
-          content: systemPrompt,
-        },
-        {
-          role: 'user',
-          content: userText,
-        },
-      ],
-    });
-
-    const replyText =
-      aiResponse.output_text ||
-      'Merhaba, size yardımcı olabilmem için biraz daha detay paylaşır mısınız?';
-
-    await axios.post(
-      `https://graph.facebook.com/v23.0/${phoneNumberId}/messages`,
-      {
-        messaging_product: 'whatsapp',
-        to: from,
-        text: { body: replyText },
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${whatsappToken}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
-
-    return res.status(200).end();
+    return res.sendStatus(200);
   } catch (error) {
-    console.error('HATA:', error.response?.data || error.message || error);
-    return res.status(200).end();
+    console.error("Webhook error:", error.response?.data || error.message);
+    return res.sendStatus(500);
   }
 });
 
-app.listen(port, () => {
-  console.log(`Listening on port ${port}`);
+app.get("/", (req, res) => {
+  res.send("Asistan DJI çalışıyor.");
+});
+
+app.listen(PORT, () => {
+  console.log(`Server listening on port ${PORT}`);
 });
