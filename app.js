@@ -58,20 +58,33 @@ KARŞILAMA
 `;
 
 async function generateReply(userMessage) {
-  console.log("OpenAI'ye gönderilen mesaj:", userMessage);
+  try {
+    console.log("OpenAI'ye gönderilen mesaj:", userMessage);
+    console.log("Model:", OPENAI_MODEL);
+    console.log("API key var mı:", !!OPENAI_API_KEY);
 
-  const response = await openai.responses.create({
-    model: OPENAI_MODEL,
-    instructions: SYSTEM_PROMPT,
-    input: userMessage,
-  });
+    const response = await openai.chat.completions.create({
+      model: OPENAI_MODEL,
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: userMessage }
+      ],
+      temperature: 0.7
+    });
 
-  const text =
-    response.output_text?.trim() ||
-    "Merhabalar, size daha doğru yardımcı olabilmem için konuyu biraz daha detaylı yazabilir misiniz?";
+    const text =
+      response.choices?.[0]?.message?.content?.trim() ||
+      "Merhabalar, size daha doğru yardımcı olabilmem için konuyu biraz daha detaylı yazabilir misiniz?";
 
-  console.log("OpenAI cevabı:", text);
-  return text;
+    console.log("OpenAI cevabı:", text);
+    return text;
+  } catch (error) {
+    console.error(
+      "OpenAI hata detayı:",
+      error?.response?.data || error?.message || error
+    );
+    return "Merhabalar, şu anda sistem yoğunluğu nedeniyle yanıt oluştururken kısa süreli bir sorun yaşandı. Sorununuzu biraz daha detaylı yazarsanız tekrar yardımcı olayım.";
+  }
 }
 
 async function sendWhatsAppMessage(to, body) {
