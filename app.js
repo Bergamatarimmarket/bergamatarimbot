@@ -16,7 +16,6 @@ const openai = new OpenAI({
   apiKey: OPENAI_API_KEY,
 });
 
-const SITE_URL = "https://www.bergamatarimmarket.com";
 const TRAINING_FORM_URL = "https://www.bergamatarimmarket.com/contact/";
 
 const SYSTEM_PROMPT = `
@@ -39,94 +38,36 @@ KURUM BİLGİSİ
 - Genel eğitim programları dönemsel olarak değişebilir. Kesin tarih verme, güncel duyurular için web sitesine yönlendir.
 - Özel eğitimler, bahçe ziyaretleri ve danışmanlık talepleri için kullanıcıdan temel bilgiler alınmalı ve konu işletme yetkilisine yönlendirilmelidir.
 
-TEMEL AMAÇ
-- Kullanıcının derdini doğal konuşmadan anla.
-- Hemen ürün ismi sayma.
-- Önce gerekli bilgileri topla.
-- Mümkün olduğunca Bergama Tarım Market paketlerine yönlendir.
-- Sipariş, fiyat, özel danışmanlık, özel program, eğitim talebi, bahçe ziyareti veya teknik detay gerektiren konuları işletme yetkilisine yönlendir.
-
 KESİN KURALLAR
-1. Menü gibi konuşturma. Doğal sohbet et.
-2. Kullanıcıyı kısa ama açıklayıcı şekilde karşıla.
-3. Kesin teşhis koyma. "ön değerlendirme", "muhtemel", "uyumlu olabilir" gibi güvenli dil kullan.
-4. Tek tek ürün önerip kullanıcıyı dışarıdan alışverişe yönlendirme.
-5. Uygun durumda dönem paketine yönlendir.
-6. Eren Vural'ın kişisel telefon numarasını paylaşma.
-7. Kullanıcı “Eren Vural ile görüşmek istiyorum” derse:
-   - konuyu kısaca öğren
-   - gerekli bilgileri topla
-   - "konunuzu ekip arkadaşımıza iletmek üzere not alıyorum" gibi yanıt ver
-   - numara verme
-8. Fiyat vermek yerine talebi not alıp işletme yetkilisine yönlendirebilirsin.
-9. Eğitim kaydı isteyenleri web sitesindeki eğitim başvuru formuna yönlendir.
-10. Güncel eğitim takvimi kesin değilse net tarih uydurma.
-11. Kullanıcı bakır, fosfor, potasyum, kalsiyum gibi tek ürünler sorsa bile cevabı mümkünse paket mantığına bağla.
-12. Cevaplar profesyonel, sıcak, sade ve güven veren Türkçe ile yazılmalı.
-13. Çok uzun cevap verme. WhatsApp için doğal ve okunabilir yaz.
-14. Ürün tavsiyesi verirken tek ürün değil, mümkün olduğunca paket yaklaşımı kullan.
-15. Teknik sipariş, özel fiyat ve kesin uzman görüşü gereken konuları işletme yetkilisine yönlendir.
-
-KULLANICIDAN GEREKTİĞİNDE TOPLANACAK BİLGİLER
-- İl
-- İlçe / bölge
-- Kaç dekar / kaç ağaç
-- Ağaç yaşı
-- Sulama sistemi var mı yok mu
-- Programı yapraktan mı, topraktan mı istiyor
-- Sorun ne zaman başladı
-- Daha önce yaptığı uygulamalar
-- Toprak analizi var mı
-- Güncel fotoğraf var mı
-- Belirtinin yaprakta mı, dalda mı, meyvede mi olduğu
-
-PAKET MANTIĞI
-- Kışlık bakım paketi
-- Tomurcuk / çiçeklenme öncesi paket
-- Meyve tutumu sonrası paket
-- Tane büyütme paketi
-
-Not:
-Paketlerin detay içerikleri ve dozajları sonradan ayrıca öğretilecek. Şimdilik kullanıcıyı doğru pakete yönlendirecek kadar konuş.
-
-YANIT ŞABLONU
-Uygun olduğunda şu akışı kullan:
-1. Kısa değerlendirme
-2. Gerekli netleştirici sorular
-3. Paket yönlendirmesi veya süreç açıklaması
-4. Gerekirse işletme yetkilisine yönlendirme
-
-ÖRNEK TON
-- "Bunu daha doğru değerlendirebilmem için birkaç bilgiye ihtiyacım var."
-- "Tek tek ürün önermek yerine bahçenize uygun dönem paketine yönelmek daha sağlıklı olur."
-- "İsterseniz konunuzu not alıp işletme yetkilimize yönlendirebilirim."
-- "Eğitim detayları ve başvuru için web sitemizdeki eğitim başvuru formunu kullanabilirsiniz: ${TRAINING_FORM_URL}"
-
-KARŞILAMA
-İlk mesajda veya uygun durumda şöyle karşıla:
-"Merhabalar, ben Bergama Tarım Market’in dijital tarım danışmanı AsistanDiji. Zeytin yetiştiriciliği, dönemsel bakım paketleri, budama, eğitimler ve bahçenize özel ön değerlendirme konusunda yardımcı olabilirim. Sorununuzu detaylı yazabilir veya fotoğraf gönderebilirsiniz."
-
-KISA TUTMA KURALI
-- WhatsApp yanıtları genelde 3-8 cümle arası olsun.
-- Gereksiz uzun paragraf yazma.
-- Kullanıcı bilgi vermediyse ilk turda 2-5 önemli soru sor.
+- Menü gibi konuşturma, doğal sohbet et.
+- Kesin teşhis koyma.
+- Tek tek ürün yerine mümkün olduğunca paket yaklaşımı kullan.
+- Eren Vural'ın kişisel telefon numarasını paylaşma.
+- Eğitim sorularında kullanıcıyı eğitim başvuru formuna yönlendir: ${TRAINING_FORM_URL}
+- Cevaplar kısa, sıcak, profesyonel ve WhatsApp'a uygun olsun.
 `;
 
 async function generateReply(userMessage) {
+  console.log("OpenAI'ye gönderilen mesaj:", userMessage);
+
   const response = await openai.responses.create({
     model: OPENAI_MODEL,
     instructions: SYSTEM_PROMPT,
     input: userMessage,
   });
 
-  return (
+  const text =
     response.output_text?.trim() ||
-    "Merhabalar, size daha doğru yardımcı olabilmem için konuyu biraz daha detaylı yazabilir misiniz?"
-  );
+    "Merhabalar, size daha doğru yardımcı olabilmem için konuyu biraz daha detaylı yazabilir misiniz?";
+
+  console.log("OpenAI cevabı:", text);
+  return text;
 }
 
 async function sendWhatsAppMessage(to, body) {
-  await axios.post(
+  console.log("WhatsApp'a gönderiliyor:", { to, body });
+
+  const result = await axios.post(
     `https://graph.facebook.com/v23.0/${PHONE_NUMBER_ID}/messages`,
     {
       messaging_product: "whatsapp",
@@ -141,31 +82,44 @@ async function sendWhatsAppMessage(to, body) {
       },
     }
   );
+
+  console.log("WhatsApp gönderim sonucu:", result.data);
 }
 
 app.get("/webhook", (req, res) => {
+  console.log("GET /webhook doğrulama isteği geldi");
+
   const mode = req.query["hub.mode"];
   const token = req.query["hub.verify_token"];
   const challenge = req.query["hub.challenge"];
 
   if (mode === "subscribe" && token === VERIFY_TOKEN) {
+    console.log("Webhook doğrulaması başarılı");
     return res.status(200).send(challenge);
   }
 
+  console.log("Webhook doğrulaması başarısız");
   return res.sendStatus(403);
 });
 
 app.post("/webhook", async (req, res) => {
   try {
+    console.log("POST /webhook geldi");
+    console.log("Gelen body:", JSON.stringify(req.body, null, 2));
+
     const message = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
 
     if (!message) {
+      console.log("Mesaj objesi bulunamadı");
       return res.sendStatus(200);
     }
 
     const from = message.from;
     const messageType = message.type;
     let userText = "";
+
+    console.log("Mesaj tipi:", messageType);
+    console.log("Gönderen:", from);
 
     if (messageType === "text") {
       userText = message.text?.body || "";
@@ -180,17 +134,22 @@ app.post("/webhook", async (req, res) => {
     const reply = await generateReply(userText);
     await sendWhatsAppMessage(from, reply);
 
+    console.log("İşlem tamamlandı");
     return res.sendStatus(200);
   } catch (error) {
-    console.error("Webhook error:", error.response?.data || error.message);
+    console.error(
+      "Webhook error detay:",
+      error.response?.data || error.message || error
+    );
     return res.sendStatus(500);
   }
 });
 
 app.get("/", (req, res) => {
+  console.log("GET / çağrıldı");
   res.send("AsistanDiji çalışıyor.");
 });
 
 app.listen(PORT, () => {
-  console.log(`Server listening on port ${PORT}`);
+  console.log(`Sunucu ${PORT} numaralı bağlantı noktasında dinleme yapıyor.`);
 });
