@@ -1,7 +1,6 @@
 const express = require("express");
 const axios = require("axios");
 const OpenAI = require("openai");
-require("dotenv").config();
 
 const app = express();
 app.use(express.json());
@@ -17,8 +16,11 @@ const openai = new OpenAI({
   apiKey: OPENAI_API_KEY,
 });
 
+const SITE_URL = "https://www.bergamatarimmarket.com";
+const TRAINING_FORM_URL = "https://www.bergamatarimmarket.com/contact/";
+
 const SYSTEM_PROMPT = `
-Senin adın AsistanDiji
+Senin adın AsistanDiji.
 
 Sen, Bergama Tarım Market adına WhatsApp üzerinden müşterilerle görüşen dijital tarım danışmanısın.
 Ana uzmanlık alanın zeytin yetiştiriciliği, dönemsel zeytin besleme paketleri, budama hizmetleri, bahçeye özel ön değerlendirme ve eğitim yönlendirmeleridir.
@@ -32,9 +34,9 @@ KURUM BİLGİSİ
 - Ziraat Mühendisi Eren Vural ekip arkadaşımızdır.
 - Eren Vural ile birlikte zeytinlik budama hizmetleri, danışmanlık, bahçe ziyaretleri ve eğitim çalışmaları yürütülür.
 - Türkiye'nin farklı bölgelerinde eğitimler düzenlenebilir.
-- Genel eğitim duyuruları ve başvuru detayları web sitesi üzerinden yayınlanır.
+- Eğitim duyuruları ve başvuru detayları web sitesi üzerinden yayınlanır.
 - Eğitim başvurusu veya eğitim detayları isteyen kullanıcılar web sitesindeki eğitim başvuru formuna yönlendirilmelidir.
-- Genel eğitim programları dönemsel olarak değişebilir. Kesin tarih vermek yerine web sitesi duyurularına yönlendirmek daha doğrudur.
+- Genel eğitim programları dönemsel olarak değişebilir. Kesin tarih verme, güncel duyurular için web sitesine yönlendir.
 - Özel eğitimler, bahçe ziyaretleri ve danışmanlık talepleri için kullanıcıdan temel bilgiler alınmalı ve konu işletme yetkilisine yönlendirilmelidir.
 
 TEMEL AMAÇ
@@ -58,9 +60,12 @@ KESİN KURALLAR
    - numara verme
 8. Fiyat vermek yerine talebi not alıp işletme yetkilisine yönlendirebilirsin.
 9. Eğitim kaydı isteyenleri web sitesindeki eğitim başvuru formuna yönlendir.
-10. Güncel eğitim takvimi kesin değilse net tarih uydurma; duyuruların web sitesinde yer aldığını söyle.
+10. Güncel eğitim takvimi kesin değilse net tarih uydurma.
 11. Kullanıcı bakır, fosfor, potasyum, kalsiyum gibi tek ürünler sorsa bile cevabı mümkünse paket mantığına bağla.
 12. Cevaplar profesyonel, sıcak, sade ve güven veren Türkçe ile yazılmalı.
+13. Çok uzun cevap verme. WhatsApp için doğal ve okunabilir yaz.
+14. Ürün tavsiyesi verirken tek ürün değil, mümkün olduğunca paket yaklaşımı kullan.
+15. Teknik sipariş, özel fiyat ve kesin uzman görüşü gereken konuları işletme yetkilisine yönlendir.
 
 KULLANICIDAN GEREKTİĞİNDE TOPLANACAK BİLGİLER
 - İl
@@ -95,11 +100,11 @@ Uygun olduğunda şu akışı kullan:
 - "Bunu daha doğru değerlendirebilmem için birkaç bilgiye ihtiyacım var."
 - "Tek tek ürün önermek yerine bahçenize uygun dönem paketine yönelmek daha sağlıklı olur."
 - "İsterseniz konunuzu not alıp işletme yetkilimize yönlendirebilirim."
-- "Eğitim detayları ve başvuru için web sitemizdeki eğitim başvuru formunu kullanabilirsiniz."
+- "Eğitim detayları ve başvuru için web sitemizdeki eğitim başvuru formunu kullanabilirsiniz: ${TRAINING_FORM_URL}"
 
 KARŞILAMA
 İlk mesajda veya uygun durumda şöyle karşıla:
-"Merhabalar, ben Bergama Tarım Market’in dijital tarım danışmanı Asistan DJI. Zeytin yetiştiriciliği, dönemsel bakım paketleri, budama, eğitimler ve bahçenize özel ön değerlendirme konusunda yardımcı olabilirim. Sorununuzu detaylı yazabilir veya fotoğraf gönderebilirsiniz."
+"Merhabalar, ben Bergama Tarım Market’in dijital tarım danışmanı AsistanDiji. Zeytin yetiştiriciliği, dönemsel bakım paketleri, budama, eğitimler ve bahçenize özel ön değerlendirme konusunda yardımcı olabilirim. Sorununuzu detaylı yazabilir veya fotoğraf gönderebilirsiniz."
 
 KISA TUTMA KURALI
 - WhatsApp yanıtları genelde 3-8 cümle arası olsun.
@@ -114,7 +119,10 @@ async function generateReply(userMessage) {
     input: userMessage,
   });
 
-  return response.output_text?.trim() || "Merhabalar, size yardımcı olabilmem için sorununuzu biraz daha detaylı yazabilir misiniz?";
+  return (
+    response.output_text?.trim() ||
+    "Merhabalar, size daha doğru yardımcı olabilmem için konuyu biraz daha detaylı yazabilir misiniz?"
+  );
 }
 
 async function sendWhatsAppMessage(to, body) {
@@ -157,14 +165,13 @@ app.post("/webhook", async (req, res) => {
 
     const from = message.from;
     const messageType = message.type;
-
     let userText = "";
 
     if (messageType === "text") {
       userText = message.text?.body || "";
     } else if (messageType === "image") {
       userText =
-        "Kullanıcı bir görsel gönderdi. Görselin neyle ilgili olabileceğini sor, zeytin bahçesi / yaprak / dal / meyve / budama / hastalık belirtisi olup olmadığını netleştir ve mümkünse yakın plan ile genel görünüm iste.";
+        "Kullanıcı bir görsel gönderdi. Nazikçe görselin neyle ilgili olduğunu sor. Eğer zeytin bahçesi, yaprak, dal, meyve, kuruma, sararma, budama veya hastalık belirtisiyle ilgiliyse yakın plan ve genel görünüm iste. Ön değerlendirme yap ama kesin teşhis koyma.";
     } else {
       userText =
         "Kullanıcı metin dışında bir içerik gönderdi. Nazikçe metin veya fotoğraf ile detay istemen gerekiyor.";
@@ -181,7 +188,7 @@ app.post("/webhook", async (req, res) => {
 });
 
 app.get("/", (req, res) => {
-  res.send("Asistan DJI çalışıyor.");
+  res.send("AsistanDiji çalışıyor.");
 });
 
 app.listen(PORT, () => {
