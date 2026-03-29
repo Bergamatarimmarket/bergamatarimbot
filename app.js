@@ -34,7 +34,7 @@ KURUM BİLGİSİ
 - Eren Vural ile birlikte zeytinlik budama hizmetleri, danışmanlık, bahçe ziyaretleri ve eğitim çalışmaları yürütülür.
 - Türkiye'nin farklı bölgelerinde eğitimler düzenlenebilir.
 - Eğitim duyuruları ve başvuru detayları web sitesi üzerinden yayınlanır.
-- Eğitim başvurusu veya eğitim detayları isteyen kullanıcılar web sitesindeki eğitim başvuru formuna yönlendirilmelidir.
+- Eğitim başvurusu veya eğitim detayları isteyen kullanıcılar web sitesindeki eğitim başvuru formuna yönlendirilmelidir: ${TRAINING_FORM_URL}
 - Genel eğitim programları dönemsel olarak değişebilir. Kesin tarih verme, güncel duyurular için web sitesine yönlendir.
 - Özel eğitimler, bahçe ziyaretleri ve danışmanlık talepleri için kullanıcıdan temel bilgiler alınmalı ve konu işletme yetkilisine yönlendirilmelidir.
 
@@ -43,8 +43,18 @@ KESİN KURALLAR
 - Kesin teşhis koyma.
 - Tek tek ürün yerine mümkün olduğunca paket yaklaşımı kullan.
 - Eren Vural'ın kişisel telefon numarasını paylaşma.
-- Eğitim sorularında kullanıcıyı eğitim başvuru formuna yönlendir: ${TRAINING_FORM_URL}
+- Kullanıcıyı gerektiğinde şu bilgileri vermeye yönlendir: il, ilçe/bölge, dekar, ağaç yaşı, sulama durumu, sorun ne zaman başladı, önceki uygulamalar, toprak analizi, güncel fotoğraf.
+- Eğitim sorularında başvuru formuna yönlendir.
 - Cevaplar kısa, sıcak, profesyonel ve WhatsApp'a uygun olsun.
+
+PAKET MANTIĞI
+- Kışlık bakım paketi
+- Tomurcuk / çiçeklenme öncesi paket
+- Meyve tutumu sonrası paket
+- Tane büyütme paketi
+
+KARŞILAMA
+"Merhabalar, ben Bergama Tarım Market’in dijital tarım danışmanı AsistanDiji. Zeytin yetiştiriciliği, dönemsel bakım paketleri, budama, eğitimler ve bahçenize özel ön değerlendirme konusunda yardımcı olabilirim. Sorununuzu detaylı yazabilir veya fotoğraf gönderebilirsiniz."
 `;
 
 async function generateReply(userMessage) {
@@ -86,8 +96,8 @@ async function sendWhatsAppMessage(to, body) {
   console.log("WhatsApp gönderim sonucu:", result.data);
 }
 
-app.get("/webhook", (req, res) => {
-  console.log("GET /webhook doğrulama isteği geldi");
+function verifyWebhook(req, res) {
+  console.log("Webhook doğrulama isteği geldi");
 
   const mode = req.query["hub.mode"];
   const token = req.query["hub.verify_token"];
@@ -100,11 +110,11 @@ app.get("/webhook", (req, res) => {
 
   console.log("Webhook doğrulaması başarısız");
   return res.sendStatus(403);
-});
+}
 
-app.post("/webhook", async (req, res) => {
+async function handleIncomingMessage(req, res) {
   try {
-    console.log("POST /webhook geldi");
+    console.log("POST webhook geldi");
     console.log("Gelen body:", JSON.stringify(req.body, null, 2));
 
     const message = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
@@ -143,10 +153,16 @@ app.post("/webhook", async (req, res) => {
     );
     return res.sendStatus(500);
   }
-});
+}
 
-app.get("/", (req, res) => {
-  console.log("GET / çağrıldı");
+// Hem eski hem yeni webhook yolu destekleniyor
+app.get("/", verifyWebhook);
+app.get("/webhook", verifyWebhook);
+
+app.post("/", handleIncomingMessage);
+app.post("/webhook", handleIncomingMessage);
+
+app.get("/health", (req, res) => {
   res.send("AsistanDiji çalışıyor.");
 });
 
