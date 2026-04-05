@@ -1,6 +1,8 @@
 const express = require("express");
 const axios = require("axios");
 const OpenAI = require("openai");
+const sqlite3 = require("sqlite3").verbose();
+const path = require("path");
 
 const app = express();
 app.use(express.json());
@@ -16,7 +18,20 @@ const openai = new OpenAI({
   apiKey: OPENAI_API_KEY,
 });
 
-const TRAINING_FORM_URL = "https://www.bergamatarimmarket.com/contact/";
+const dbPath = path.join(__dirname, "chat_history.db");
+const db = new sqlite3.Database(dbPath);
+
+db.serialize(() => {
+  db.run(`
+    CREATE TABLE IF NOT EXISTS conversations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      phone TEXT NOT NULL,
+      role TEXT NOT NULL,
+      message TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+});
 
 const SYSTEM_PROMPT = `
 Senin adın BeRobot.
@@ -49,6 +64,8 @@ Davranış kuralları:
 - Doğal, profesyonel, samimi, sade ve düzgün Türkçe kullan.
 - Bozuk, tekrar eden, anlamsız veya saçma cümle kurma.
 - Kısa ve net cevap ver.
+- Sohbet geçmişini dikkate al. Kullanıcının daha önce verdiği bilgileri tekrar tekrar sorma.
+- Kullanıcı bir bilgi verdiyse, o bilgi eksik değilse yeniden isteme.
 - Her mesajda fotoğraf isteme.
 - Her mesajda uzun soru listesi sorma.
 - Kullanıcı bir sorun anlatmıyorsa durduk yere görsel isteme.
@@ -137,42 +154,74 @@ Fiyat ve sipariş yaklaşımı:
 - İlk cevaplarda mümkünse 2 ila 6 cümle arasında kal.
 
 Karşılama örneği:
-“Merhabalar, ben Bergama Tarım Market’in dijital tarım danışmanı BeRobot. Size nasıl yardımcı olabilirim?"
+“Merhabalar, ben Bergama Tarım Market’in dijital tarım danışmanı BeRobot. Size nasıl yardımcı olabilirim?”
 `;
 
-async function generateReply(userMessage) {
+function saveMessage(phone, role, message) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      `INSERT INTO conversations (phone, role, message) VALUES (?, ?, ?)`,
+      [phone, role, message],
+      function (err) {
+        if (err) reject(err);
+        else resolve(this.lastID);
+      }
+    );
+  });
+}
+
+function getConversationHistory(phone, limit = 20) {
+  return new Promise((resolve, reject) => {
+    db.all(
+      `
+      SELECT role, message, created_at
+      FROM conversations
+      WHERE phone = ?
+      ORDER BY id DESC
+      LIMIT ?
+      `,
+      [phone, limit],
+      (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows.reverse());
+      }
+    );
+  });
+}
+
+async function generateReply(phone, userMessage) {
   try {
-    console.log("OpenAI'ye gönderilen mesaj:", userMessage);
-    console.log("Model:", OPENAI_MODEL);
-    console.log("API key var mı:", !!OPENAI_API_KEY);
+    const history = await getConversationHistory(phone, 20);
+
+    const messages = [
+      { role: "system", content: SYSTEM_PROMPT },
+      ...history.map((item) => ({
+        role: item.role,
+        content: item.message,
+      })),
+      { role: "user", content: userMessage },
+    ];
+
+    console.log("OpenAI geçmiş uzunluğu:", messages.length);
 
     const response = await openai.chat.completions.create({
       model: OPENAI_MODEL,
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: userMessage }
-      ],
-      temperature: 0.7
+      messages,
+      temperature: 0.3,
     });
 
     const text =
       response.choices?.[0]?.message?.content?.trim() ||
-      "Merhabalar, size daha doğru yardımcı olabilmem için konuyu biraz daha detaylı yazabilir misiniz?";
+      "Merhabalar, size daha doğru yardımcı olabilmem için konuyu biraz daha net paylaşabilir misiniz?";
 
-    console.log("OpenAI cevabı:", text);
     return text;
   } catch (error) {
-    console.error(
-      "OpenAI hata detayı:",
-      error?.response?.data || error?.message || error
-    );
-    return "Merhabalar, şu anda sistem yoğunluğu nedeniyle yanıt oluştururken kısa süreli bir sorun yaşandı. Sorununuzu biraz daha detaylı yazarsanız tekrar yardımcı olayım.";
+    console.error("OpenAI hata detayı:", error?.response?.data || error?.message || error);
+    return "Merhabalar, şu anda kısa süreli bir yoğunluk yaşıyorum. Mesajınızı tekrar biraz daha net yazarsanız yardımcı olayım.";
   }
 }
 
 async function sendWhatsAppMessage(to, body) {
-  console.log("WhatsApp'a gönderiliyor:", { to, body });
-
   const result = await axios.post(
     `https://graph.facebook.com/v23.0/${PHONE_NUMBER_ID}/messages`,
     {
@@ -189,12 +238,10 @@ async function sendWhatsAppMessage(to, body) {
     }
   );
 
-  console.log("WhatsApp gönderim sonucu:", result.data);
+  return result.data;
 }
 
 function verifyWebhook(req, res) {
-  console.log("Webhook doğrulama isteği geldi");
-
   const mode = req.query["hub.mode"];
   const token = req.query["hub.verify_token"];
   const challenge = req.query["hub.challenge"];
@@ -204,19 +251,14 @@ function verifyWebhook(req, res) {
     return res.status(200).send(challenge);
   }
 
-  console.log("Webhook doğrulaması başarısız");
   return res.sendStatus(403);
 }
 
 async function handleIncomingMessage(req, res) {
   try {
-    console.log("POST webhook geldi");
-    console.log("Gelen body:", JSON.stringify(req.body, null, 2));
-
     const message = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
 
     if (!message) {
-      console.log("Mesaj objesi bulunamadı");
       return res.sendStatus(200);
     }
 
@@ -224,34 +266,33 @@ async function handleIncomingMessage(req, res) {
     const messageType = message.type;
     let userText = "";
 
-    console.log("Mesaj tipi:", messageType);
-    console.log("Gönderen:", from);
-
     if (messageType === "text") {
       userText = message.text?.body || "";
     } else if (messageType === "image") {
       userText =
-        "Kullanıcı bir görsel gönderdi. Nazikçe görselin neyle ilgili olduğunu sor. Eğer zeytin bahçesi, yaprak, dal, meyve, kuruma, sararma, budama veya hastalık belirtisiyle ilgiliyse yakın plan ve genel görünüm iste. Ön değerlendirme yap ama kesin teşhis koyma.";
+        "Kullanıcı bir görsel gönderdi. Yalnızca gerçekten gerekiyorsa görselin neyle ilgili olduğunu netleştir ve uygun şekilde kısa cevap ver.";
     } else {
       userText =
-        "Kullanıcı metin dışında bir içerik gönderdi. Nazikçe metin veya fotoğraf ile detay istemen gerekiyor.";
+        "Kullanıcı metin dışında bir içerik gönderdi. Nazikçe kısa bir açıklama iste.";
     }
 
-    const reply = await generateReply(userText);
+    console.log("Yeni mesaj:", from, userText);
+
+    await saveMessage(from, "user", userText);
+
+    const reply = await generateReply(from, userText);
+
+    await saveMessage(from, "assistant", reply);
+
     await sendWhatsAppMessage(from, reply);
 
-    console.log("İşlem tamamlandı");
     return res.sendStatus(200);
   } catch (error) {
-    console.error(
-      "Webhook error detay:",
-      error.response?.data || error.message || error
-    );
+    console.error("Webhook hata detayı:", error.response?.data || error.message || error);
     return res.sendStatus(500);
   }
 }
 
-// Hem eski hem yeni webhook yolu destekleniyor
 app.get("/", verifyWebhook);
 app.get("/webhook", verifyWebhook);
 
@@ -259,7 +300,45 @@ app.post("/", handleIncomingMessage);
 app.post("/webhook", handleIncomingMessage);
 
 app.get("/health", (req, res) => {
-  res.send("AsistanDiji çalışıyor.");
+  res.send("BeRobot çalışıyor.");
+});
+
+app.get("/conversations/:phone", (req, res) => {
+  const phone = req.params.phone;
+
+  db.all(
+    `
+    SELECT id, phone, role, message, created_at
+    FROM conversations
+    WHERE phone = ?
+    ORDER BY id ASC
+    `,
+    [phone],
+    (err, rows) => {
+      if (err) {
+        return res.status(500).json({ error: "Kayıtlar alınamadı." });
+      }
+      return res.json(rows);
+    }
+  );
+});
+
+app.get("/conversations", (req, res) => {
+  db.all(
+    `
+    SELECT phone, MAX(created_at) as last_message_at, COUNT(*) as total_messages
+    FROM conversations
+    GROUP BY phone
+    ORDER BY last_message_at DESC
+    `,
+    [],
+    (err, rows) => {
+      if (err) {
+        return res.status(500).json({ error: "Konuşma listesi alınamadı." });
+      }
+      return res.json(rows);
+    }
+  );
 });
 
 app.listen(PORT, () => {
